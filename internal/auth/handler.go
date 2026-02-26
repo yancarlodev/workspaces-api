@@ -25,5 +25,10 @@ func (h *Handler) Login(ctx *gin.Context) {
 		return
 	}
 
+	if errs := loginData.Validate(); !errs.IsEmpty() {
+		ctx.JSON(http.StatusBadRequest, errs)
+		return
+	}
+
 	ctx.JSON(http.StatusOK, loginData)
 }
