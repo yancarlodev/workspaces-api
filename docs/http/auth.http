@@ -1,0 +1,10 @@
+# @import ./variables.http
+
+POST /auth/login HTTP/1.1
+Content-Type: application/json
+Cookie: session={{sessionId}}
+
+{
+    "email": "johndoe@example.com",
+    "password": "johndoe123"
+}
