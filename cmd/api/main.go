@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yancarlodev/workspaces-api/internal/platform/app"
 	"github.com/yancarlodev/workspaces-api/internal/platform/config"
 )
 
@@ -13,6 +14,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	_ = app.New()
 
 	if err := server.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatal(err)
