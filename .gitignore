@@ -3,3 +3,4 @@
 tmp
 docs/http/variables.http
 .env
+*.db
