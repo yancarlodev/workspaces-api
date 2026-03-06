@@ -2,9 +2,12 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yancarlodev/workspaces-api/assets"
 	"github.com/yancarlodev/workspaces-api/internal/auth"
 	"github.com/yancarlodev/workspaces-api/internal/platform/app"
 	"github.com/yancarlodev/workspaces-api/internal/platform/config"
@@ -12,13 +15,32 @@ import (
 )
 
 func main() {
+	args := os.Args[1:]
+
+	if len(args) == 0 {
+		fmt.Println("available commands:\n\tmigrate\n\trun")
+		return
+	}
+
+	subcommand := args[0]
+
 	DB, err := db.Init("local.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer DB.Close()
 
-	startServer(DB)
+	switch subcommand {
+	case "migrate":
+		err := db.Migrate(DB, &assets.Migrations, "scripts/migrations")
+		if err != nil {
+			log.Fatal(err)
+		}
+	case "run":
+		startServer(DB)
+	default:
+		fmt.Println("available commands:\n\tmigrate\n\trun")
+	}
 }
 
 func startServer(DB *sql.DB) {
