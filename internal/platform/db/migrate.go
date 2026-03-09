@@ -3,7 +3,6 @@ package db
 import (
 	"crypto/sha256"
 	"database/sql"
-	"embed"
 	"fmt"
 	"io/fs"
 	"strings"
@@ -11,46 +10,40 @@ import (
 	"github.com/yancarlodev/workspaces-api/internal/platform/datastruct"
 )
 
-func Migrate(DB *sql.DB, fsys *embed.FS, sqlFilePath string) error {
-	sub, entries, err := openSQLDir(fsys, sqlFilePath)
-	if err != nil {
-		return err
-	}
-
-	if err = createMigrationTable(DB); err != nil {
-		return err
-	}
-
-	executedMigrations, err := getExecutedMigrations(DB)
-	if err != nil {
-		return err
-	}
-
-	pendingMigration := getPendingMigrations(entries, executedMigrations)
-
-	if err = execMigrations(DB, sub, pendingMigration); err != nil {
-		return err
-	}
-
-	return nil
+type migrator struct {
+	DB   *sql.DB
+	fsys fs.FS
 }
 
-func openSQLDir(fsys *embed.FS, sqlFilePath string) (fs.FS, []fs.DirEntry, error) {
-	sub, err := fs.Sub(fsys, sqlFilePath)
-	if err != nil {
-		return nil, nil, err
+func NewMigrator(DB *sql.DB, fsys fs.FS) *migrator {
+	return &migrator{
+		fsys: fsys,
+		DB:   DB,
 	}
-
-	entries, err := fs.ReadDir(sub, ".")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return sub, entries, nil
 }
 
-func createMigrationTable(DB *sql.DB) error {
-	_, err := DB.Exec(`CREATE TABLE IF NOT EXISTS migration (
+func (m *migrator) Migrate() error {
+	if err := m.createTable(); err != nil {
+		return err
+	}
+
+	executedMigrations, err := m.getExecutedMigrations()
+	if err != nil {
+		return err
+	}
+
+	entries, err := fs.ReadDir(m.fsys, ".")
+	if err != nil {
+		return err
+	}
+
+	pendingMigration := m.getPendingMigrations(entries, executedMigrations)
+
+	return m.exec(pendingMigration)
+}
+
+func (m *migrator) createTable() error {
+	_, err := m.DB.Exec(`CREATE TABLE IF NOT EXISTS migration (
 		name TEXT PRIMARY KEY,
 		checksum TEXT,
 		applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -59,8 +52,8 @@ func createMigrationTable(DB *sql.DB) error {
 	return err
 }
 
-func getExecutedMigrations(DB *sql.DB) (datastruct.Set[string], error) {
-	rows, err := DB.Query("SELECT name FROM migration;")
+func (m *migrator) getExecutedMigrations() (datastruct.Set[string], error) {
+	rows, err := m.DB.Query("SELECT name FROM migration;")
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +72,7 @@ func getExecutedMigrations(DB *sql.DB) (datastruct.Set[string], error) {
 	return executedMigrations, nil
 }
 
-func getPendingMigrations(entries []fs.DirEntry, executedMigrations datastruct.Set[string]) []fs.DirEntry {
+func (m *migrator) getPendingMigrations(entries []fs.DirEntry, executedMigrations datastruct.Set[string]) []fs.DirEntry {
 	upMigrationCount := len(entries) / 2
 	pendingMigrationsCount := upMigrationCount - executedMigrations.Size()
 
@@ -95,8 +88,8 @@ func getPendingMigrations(entries []fs.DirEntry, executedMigrations datastruct.S
 	return pendingMigration
 }
 
-func execMigrations(DB *sql.DB, fsys fs.FS, entries []fs.DirEntry) error {
-	stmt, err := DB.Prepare(`
+func (m *migrator) exec(entries []fs.DirEntry) error {
+	stmt, err := m.DB.Prepare(`
 		INSERT INTO migration(name, checksum)
 		VALUES ($1, $2);
 	`)
@@ -108,7 +101,7 @@ func execMigrations(DB *sql.DB, fsys fs.FS, entries []fs.DirEntry) error {
 	for _, entry := range entries {
 		entryName := entry.Name()
 
-		data, err := fs.ReadFile(fsys, entryName)
+		data, err := fs.ReadFile(m.fsys, entryName)
 		if err != nil {
 			return err
 		}
@@ -121,7 +114,7 @@ func execMigrations(DB *sql.DB, fsys fs.FS, entries []fs.DirEntry) error {
 
 		checksum := hasher.Sum(nil)
 
-		_, err = DB.Exec(string(data))
+		_, err = m.DB.Exec(string(data))
 		if err != nil {
 			return err
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 
@@ -32,7 +33,14 @@ func main() {
 
 	switch subcommand {
 	case "migrate":
-		err := db.Migrate(DB, &assets.Migrations, "scripts/migrations")
+		fsys, err := fs.Sub(assets.Migrations, "scripts/migrations")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		migrator := db.NewMigrator(DB, fsys)
+
+		migrator.Migrate()
 		if err != nil {
 			log.Fatal(err)
 		}
