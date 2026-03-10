@@ -2,9 +2,7 @@ package db
 
 import (
 	"cmp"
-	"crypto/sha256"
 	"database/sql"
-	"fmt"
 	"io/fs"
 	"log/slog"
 	"slices"
@@ -32,7 +30,7 @@ func (m *migrator) Migrate() error {
 		return err
 	}
 
-	executed, err := m.executedMigrations()
+	applied, err := m.appliedMigrations()
 	if err != nil {
 		return err
 	}
@@ -42,7 +40,7 @@ func (m *migrator) Migrate() error {
 		return err
 	}
 
-	pending := m.pendingMigrations(entries, executed)
+	pending := m.pendingMigrations(entries, applied)
 	if len(pending) == 0 {
 		m.log.Info("no pending migration found")
 		return nil
@@ -56,42 +54,41 @@ func (m *migrator) Migrate() error {
 func (m *migrator) createTable() error {
 	_, err := m.DB.Exec(`CREATE TABLE IF NOT EXISTS migration (
 		name TEXT PRIMARY KEY,
-		checksum TEXT,
 		applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`)
 
 	return err
 }
 
-func (m *migrator) executedMigrations() (datastruct.Set[string], error) {
+func (m *migrator) appliedMigrations() (datastruct.Set[string], error) {
 	rows, err := m.DB.Query("SELECT name FROM migration;")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	executed := datastruct.NewHashSet[string]()
+	applied := datastruct.NewHashSet[string]()
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
 
-		executed.Add(name)
+		applied.Add(name)
 	}
 
-	return executed, nil
+	return applied, nil
 }
 
-func (m *migrator) pendingMigrations(entries []fs.DirEntry, executed datastruct.Set[string]) []fs.DirEntry {
+func (m *migrator) pendingMigrations(entries []fs.DirEntry, applied datastruct.Set[string]) []fs.DirEntry {
 	upMigrationCount := len(entries) / 2
-	pendingCount := upMigrationCount - executed.Size()
+	pendingCount := upMigrationCount - applied.Size()
 
 	pending := make([]fs.DirEntry, 0, pendingCount)
 	for _, entry := range entries {
 		isUpMigration := strings.HasSuffix(entry.Name(), ".up.sql")
 
-		if isUpMigration && !executed.Contains(entry.Name()) {
+		if isUpMigration && !applied.Contains(entry.Name()) {
 			pending = append(pending, entry)
 		}
 	}
@@ -105,8 +102,8 @@ func (m *migrator) pendingMigrations(entries []fs.DirEntry, executed datastruct.
 
 func (m *migrator) exec(entries []fs.DirEntry) error {
 	stmt, err := m.DB.Prepare(`
-		INSERT INTO migration(name, checksum)
-		VALUES ($1, $2);
+		INSERT INTO migration(name)
+		VALUES ($1);
 	`)
 	if err != nil {
 		return err
@@ -122,20 +119,12 @@ func (m *migrator) exec(entries []fs.DirEntry) error {
 			return err
 		}
 
-		hasher := sha256.New()
-		_, err = hasher.Write(data)
-		if err != nil {
-			return err
-		}
-
-		checksum := hasher.Sum(nil)
-
 		_, err = m.DB.Exec(string(data))
 		if err != nil {
 			return err
 		}
 
-		_, err = stmt.Exec(entryName, fmt.Sprintf("%x", checksum))
+		_, err = stmt.Exec(entryName)
 		if err != nil {
 			return err
 		}
