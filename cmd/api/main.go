@@ -50,14 +50,30 @@ func main() {
 	case "migrate":
 		fsys, err := fs.Sub(assets.Migrations, "scripts/migrations")
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("an error has occurs when getting migrations subtree", "err", err)
 		}
 
-		m := db.NewMigrator(DB, fsys, logger)
-
-		m.Migrate()
+		m, err := db.NewMigrator(DB, fsys, logger)
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("an error has occurs when creating the migrator", "err", err)
+		}
+
+		if err := m.Migrate(); err != nil {
+			logger.Error("an error has occurs when running the migrations", "err", err)
+		}
+	case "revert":
+		fsys, err := fs.Sub(assets.Migrations, "scripts/migrations")
+		if err != nil {
+			logger.Error("an error has occurs when getting migrations subtree", "err", err)
+		}
+
+		m, err := db.NewMigrator(DB, fsys, logger)
+		if err != nil {
+			logger.Error("an error has occurs when creating the migrator", "err", err)
+		}
+
+		if err := m.Revert(); err != nil {
+			logger.Error("an error has occurs when reverting the migration", "err", err)
 		}
 	case "run":
 		startServer(DB)

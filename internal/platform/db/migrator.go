@@ -17,19 +17,21 @@ type migrator struct {
 	log  *slog.Logger
 }
 
-func NewMigrator(DB *sql.DB, fsys fs.FS, logger *slog.Logger) *migrator {
-	return &migrator{
+func NewMigrator(DB *sql.DB, fsys fs.FS, logger *slog.Logger) (*migrator, error) {
+	m := &migrator{
 		fsys: fsys,
 		DB:   DB,
 		log:  logger,
 	}
+
+	if err := m.createTable(); err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }
 
 func (m *migrator) Migrate() error {
-	if err := m.createTable(); err != nil {
-		return err
-	}
-
 	applied, err := m.appliedMigrations()
 	if err != nil {
 		return err
@@ -49,6 +51,35 @@ func (m *migrator) Migrate() error {
 	m.log.Info("pending migration", "count", len(pending))
 
 	return m.exec(pending)
+}
+
+func (m *migrator) Revert() error {
+	row := m.DB.QueryRow("SELECT name FROM migration ORDER BY applied_at DESC LIMIT 1")
+
+	var lastAppliedMigration string
+	if err := row.Scan(&lastAppliedMigration); err != nil {
+		return err
+	}
+
+	migration, _ := strings.CutSuffix(lastAppliedMigration, ".up.sql")
+	data, err := fs.ReadFile(m.fsys, migration+".down.sql")
+	if err != nil {
+		return err
+	}
+
+	m.log.Info("reverting migration", "name", lastAppliedMigration)
+
+	if _, err := m.DB.Exec(string(data)); err != nil {
+		return err
+	}
+
+	if _, err := m.DB.Exec("DELETE FROM migration WHERE name = ?", lastAppliedMigration); err != nil {
+		return err
+	}
+
+	m.log.Info("reverted last migration with success")
+
+	return nil
 }
 
 func (m *migrator) createTable() error {
@@ -129,6 +160,8 @@ func (m *migrator) exec(entries []fs.DirEntry) error {
 			return err
 		}
 	}
+
+	m.log.Info("applied migrations with success")
 
 	return nil
 }
