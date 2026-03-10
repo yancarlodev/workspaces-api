@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yancarlodev/workspaces-api/assets"
@@ -31,6 +33,19 @@ func main() {
 	}
 	defer DB.Close()
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.SourceKey {
+				src := attr.Value.Any().(*slog.Source)
+				src.File = filepath.Base(src.File)
+				return slog.Any(attr.Key, src)
+			}
+
+			return attr
+		},
+	}))
+
 	switch subcommand {
 	case "migrate":
 		fsys, err := fs.Sub(assets.Migrations, "scripts/migrations")
@@ -38,9 +53,9 @@ func main() {
 			log.Fatal(err)
 		}
 
-		migrator := db.NewMigrator(DB, fsys)
+		m := db.NewMigrator(DB, fsys, logger)
 
-		migrator.Migrate()
+		m.Migrate()
 		if err != nil {
 			log.Fatal(err)
 		}

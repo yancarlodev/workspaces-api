@@ -1,10 +1,13 @@
 package db
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/yancarlodev/workspaces-api/internal/platform/datastruct"
@@ -13,12 +16,14 @@ import (
 type migrator struct {
 	DB   *sql.DB
 	fsys fs.FS
+	log  *slog.Logger
 }
 
-func NewMigrator(DB *sql.DB, fsys fs.FS) *migrator {
+func NewMigrator(DB *sql.DB, fsys fs.FS, logger *slog.Logger) *migrator {
 	return &migrator{
 		fsys: fsys,
 		DB:   DB,
+		log:  logger,
 	}
 }
 
@@ -27,7 +32,7 @@ func (m *migrator) Migrate() error {
 		return err
 	}
 
-	executedMigrations, err := m.getExecutedMigrations()
+	executed, err := m.executedMigrations()
 	if err != nil {
 		return err
 	}
@@ -37,9 +42,15 @@ func (m *migrator) Migrate() error {
 		return err
 	}
 
-	pendingMigration := m.getPendingMigrations(entries, executedMigrations)
+	pending := m.pendingMigrations(entries, executed)
+	if len(pending) == 0 {
+		m.log.Info("no pending migration found")
+		return nil
+	}
 
-	return m.exec(pendingMigration)
+	m.log.Info("pending migration", "count", len(pending))
+
+	return m.exec(pending)
 }
 
 func (m *migrator) createTable() error {
@@ -52,40 +63,44 @@ func (m *migrator) createTable() error {
 	return err
 }
 
-func (m *migrator) getExecutedMigrations() (datastruct.Set[string], error) {
+func (m *migrator) executedMigrations() (datastruct.Set[string], error) {
 	rows, err := m.DB.Query("SELECT name FROM migration;")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	executedMigrations := datastruct.NewHashSet[string]()
+	executed := datastruct.NewHashSet[string]()
 	for rows.Next() {
-		var migrationName string
-		if err := rows.Scan(&migrationName); err != nil {
+		var name string
+		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
 
-		executedMigrations.Add(migrationName)
+		executed.Add(name)
 	}
 
-	return executedMigrations, nil
+	return executed, nil
 }
 
-func (m *migrator) getPendingMigrations(entries []fs.DirEntry, executedMigrations datastruct.Set[string]) []fs.DirEntry {
+func (m *migrator) pendingMigrations(entries []fs.DirEntry, executed datastruct.Set[string]) []fs.DirEntry {
 	upMigrationCount := len(entries) / 2
-	pendingMigrationsCount := upMigrationCount - executedMigrations.Size()
+	pendingCount := upMigrationCount - executed.Size()
 
-	pendingMigration := make([]fs.DirEntry, 0, pendingMigrationsCount)
+	pending := make([]fs.DirEntry, 0, pendingCount)
 	for _, entry := range entries {
-		isUpMigration := strings.HasSuffix(entry.Name(), "up.sql")
+		isUpMigration := strings.HasSuffix(entry.Name(), ".up.sql")
 
-		if isUpMigration && !executedMigrations.Contains(entry.Name()) {
-			pendingMigration = append(pendingMigration, entry)
+		if isUpMigration && !executed.Contains(entry.Name()) {
+			pending = append(pending, entry)
 		}
 	}
 
-	return pendingMigration
+	slices.SortFunc(pending, func(a, b fs.DirEntry) int {
+		return cmp.Compare(a.Name(), b.Name())
+	})
+
+	return pending
 }
 
 func (m *migrator) exec(entries []fs.DirEntry) error {
@@ -100,6 +115,7 @@ func (m *migrator) exec(entries []fs.DirEntry) error {
 
 	for _, entry := range entries {
 		entryName := entry.Name()
+		m.log.Info("applying migration", "name", entryName)
 
 		data, err := fs.ReadFile(m.fsys, entryName)
 		if err != nil {
