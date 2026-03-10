@@ -69,14 +69,23 @@ func (m *migrator) Revert() error {
 
 	m.log.Info("reverting migration", "name", lastAppliedMigration)
 
-	if _, err := m.DB.Exec(string(data)); err != nil {
+	tx, err := m.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(string(data)); err != nil {
 		return err
 	}
 
-	if _, err := m.DB.Exec("DELETE FROM migration WHERE name = ?", lastAppliedMigration); err != nil {
+	if _, err := tx.Exec("DELETE FROM migration WHERE name = ?", lastAppliedMigration); err != nil {
 		return err
 	}
 
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 	m.log.Info("reverted last migration with success")
 
 	return nil
@@ -132,7 +141,13 @@ func (m *migrator) pendingMigrations(entries []fs.DirEntry, applied datastruct.S
 }
 
 func (m *migrator) exec(entries []fs.DirEntry) error {
-	stmt, err := m.DB.Prepare(`
+	tx, err := m.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
 		INSERT INTO migration(name)
 		VALUES ($1);
 	`)
@@ -150,7 +165,7 @@ func (m *migrator) exec(entries []fs.DirEntry) error {
 			return err
 		}
 
-		_, err = m.DB.Exec(string(data))
+		_, err = tx.Exec(string(data))
 		if err != nil {
 			return err
 		}
@@ -161,6 +176,9 @@ func (m *migrator) exec(entries []fs.DirEntry) error {
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 	m.log.Info("applied migrations with success")
 
 	return nil
