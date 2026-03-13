@@ -15,6 +15,7 @@ import (
 	"github.com/yancarlodev/workspaces-api/internal/platform/app"
 	"github.com/yancarlodev/workspaces-api/internal/platform/config"
 	"github.com/yancarlodev/workspaces-api/internal/platform/db"
+	"github.com/yancarlodev/workspaces-api/pkg/migrator"
 )
 
 func main() {
@@ -53,7 +54,7 @@ func main() {
 			logger.Error("an error has occurs when getting migrations subtree", "err", err)
 		}
 
-		m, err := db.NewMigrator(DB, fsys, logger)
+		m, err := migrator.New(DB, fsys, logger)
 		if err != nil {
 			logger.Error("an error has occurs when creating the migrator", "err", err)
 		}
@@ -67,7 +68,7 @@ func main() {
 			logger.Error("an error has occurs when getting migrations subtree", "err", err)
 		}
 
-		m, err := db.NewMigrator(DB, fsys, logger)
+		m, err := migrator.New(DB, fsys, logger)
 		if err != nil {
 			logger.Error("an error has occurs when creating the migrator", "err", err)
 		}

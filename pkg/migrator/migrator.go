@@ -1,4 +1,4 @@
-package db
+package migrator
 
 import (
 	"cmp"
@@ -17,7 +17,7 @@ type migrator struct {
 	log  *slog.Logger
 }
 
-func NewMigrator(DB *sql.DB, fsys fs.FS, logger *slog.Logger) (*migrator, error) {
+func New(DB *sql.DB, fsys fs.FS, logger *slog.Logger) (*migrator, error) {
 	m := &migrator{
 		fsys: fsys,
 		DB:   DB,
