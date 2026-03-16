@@ -16,6 +16,7 @@ import (
 	"github.com/yancarlodev/workspaces-api/internal/platform/config"
 	"github.com/yancarlodev/workspaces-api/internal/platform/db"
 	"github.com/yancarlodev/workspaces-api/pkg/migrator"
+	"github.com/yancarlodev/workspaces-api/pkg/seeder"
 )
 
 func main() {
@@ -49,7 +50,7 @@ func main() {
 
 	switch subcommand {
 	case "migrate":
-		fsys, err := fs.Sub(assets.Migrations, "scripts/migrations")
+		fsys, err := fs.Sub(assets.Fsys, "scripts/migrations")
 		if err != nil {
 			logger.Error("an error has occurs when getting migrations subtree", "err", err)
 		}
@@ -63,7 +64,7 @@ func main() {
 			logger.Error("an error has occurs when running the migrations", "err", err)
 		}
 	case "revert":
-		fsys, err := fs.Sub(assets.Migrations, "scripts/migrations")
+		fsys, err := fs.Sub(assets.Fsys, "scripts/migrations")
 		if err != nil {
 			logger.Error("an error has occurs when getting migrations subtree", "err", err)
 		}
@@ -75,6 +76,16 @@ func main() {
 
 		if err := m.Revert(); err != nil {
 			logger.Error("an error has occurs when reverting the migration", "err", err)
+		}
+	case "seed":
+		fsys, err := fs.Sub(assets.Fsys, "scripts/seeds")
+		if err != nil {
+			logger.Error("an error has occurs when getting seeds subtree", "err", err)
+		}
+
+		s := seeder.New(DB, fsys, logger)
+		if err := s.Seed(); err != nil {
+			logger.Error("an error has occurs when running the seeds", "err", err)
 		}
 	case "run":
 		startServer(DB)
