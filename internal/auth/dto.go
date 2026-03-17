@@ -11,8 +11,8 @@ type LoginRequestDTO struct {
 	Password string
 }
 
-func (d *LoginRequestDTO) Validate() validation.ValidationErrors {
-	errors := validation.ValidationErrors{}
+func (d *LoginRequestDTO) Validate() validation.Errors {
+	errors := validation.Errors{}
 
 	if d.Email == "" {
 		errors.Add("email", "required")

@@ -1,11 +1,11 @@
 package validation
 
-type ValidationErrors map[string][]string
+type Errors map[string][]string
 
-func (e ValidationErrors) Add(field, message string) {
+func (e Errors) Add(field, message string) {
 	e[field] = append(e[field], message)
 }
 
-func (e ValidationErrors) IsEmpty() bool {
+func (e Errors) IsEmpty() bool {
 	return len(e) == 0
 }
