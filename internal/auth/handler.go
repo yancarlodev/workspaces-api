@@ -18,7 +18,7 @@ func RegisterRoutes(server *gin.Engine, handler *Handler) {
 }
 
 func (h *Handler) Login(ctx *gin.Context) {
-	var loginData LoginRequestDTO
+	var loginData LoginRequest
 
 	if err := ctx.ShouldBindJSON(&loginData); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "there was an error when parsing the body"})

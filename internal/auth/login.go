@@ -6,12 +6,12 @@ import (
 	"github.com/yancarlodev/workspaces-api/internal/platform/validation"
 )
 
-type LoginRequestDTO struct {
+type LoginRequest struct {
 	Email    string
 	Password string
 }
 
-func (d *LoginRequestDTO) Validate() validation.Errors {
+func (d *LoginRequest) Validate() validation.Errors {
 	errors := validation.Errors{}
 
 	if d.Email == "" {
